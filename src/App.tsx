@@ -118,8 +118,6 @@ interface GameStateContextType {
   setNextItemId: React.Dispatch<React.SetStateAction<number>>;
   stolenItems: number;
   setStolenItems: React.Dispatch<React.SetStateAction<number>>;
-  showMessage: string | null;
-  setShowMessage: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 const GameStateContext = createContext<GameStateContextType | null>(null);
@@ -978,7 +976,6 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
   const [playerHoldingItem, setPlayerHoldingItem] = useState<Item | null>(null);
   const [nextItemId, setNextItemId] = useState(0);
   const [stolenItems, setStolenItems] = useState(0);
-  const [showMessage, setShowMessage] = useState<string | null>(null);
   
   // Initialize with 5 items
   useEffect(() => {
@@ -1007,17 +1004,6 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items.length]);
   
-  // Auto-hide messages after a delay
-  useEffect(() => {
-    if (showMessage) {
-      const timer = setTimeout(() => {
-        setShowMessage(null);
-      }, 3000); // Hide message after 3 seconds
-      
-      return () => clearTimeout(timer);
-    }
-  }, [showMessage]);
-  
   const value = {
     items,
     setItems,
@@ -1028,9 +1014,7 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
     nextItemId,
     setNextItemId,
     stolenItems,
-    setStolenItems,
-    showMessage,
-    setShowMessage
+    setStolenItems
   };
   
   return (
@@ -1161,7 +1145,6 @@ function Thief() {
     setItems,
     stolenItems,
     setStolenItems,
-    setShowMessage,
     playerHoldingItem
   } = useGameState();
   
@@ -1265,10 +1248,10 @@ function Thief() {
           setStolenItems(prev => Math.max(0, prev - 1));
           
           // Show message
-          setShowMessage("You caught the thief! Item recovered!");
+          console.log("You caught the thief! Item recovered!");
         } else {
           // Show message even if thief wasn't holding an item
-          setShowMessage("You scared away the thief!");
+          console.log("You scared away the thief!");
         }
         
         // Set thief to fleeing state
@@ -1550,7 +1533,6 @@ function App() {
         }}>
           <ScoreDisplay />
         </div>
-        <MessageDisplay />
       </GameStateProvider>
     </div>
   );
@@ -1561,26 +1543,13 @@ function ScoreDisplay() {
   const { score, stolenItems } = useGameState();
   
   return (
-    <div>
-      <div style={{ marginBottom: '5px' }}>
-        <span style={{ fontWeight: 'bold' }}>Score:</span> {score}
+    <div style={{ fontSize: '18px' }}>
+      <div>
+        <span style={{ fontWeight: 'bold', color: '#4CAF50' }}>Score:</span> {score}
       </div>
       <div>
         <span style={{ fontWeight: 'bold', color: '#ff5555' }}>Items Stolen:</span> {stolenItems}
       </div>
-    </div>
-  );
-}
-
-// Component to display messages
-function MessageDisplay() {
-  const { showMessage } = useGameState();
-  
-  if (!showMessage) return null;
-  
-  return (
-    <div className="message-display">
-      {showMessage}
     </div>
   );
 }
