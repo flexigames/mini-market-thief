@@ -143,6 +143,7 @@ const gameState = {
   highlightedShelf: null as { x: number; z: number } | null,
   thiefTargetItem: null as number | null, // ID of the item the thief is targeting
   shelfEffects: [] as { position: { x: number; z: number }, itemType: typeof ITEM_TYPES[number], createdAt: number }[],
+  isPlacingItem: false, // Flag to indicate if an item is currently being placed
 };
 
 // Function to check if character is near an item
@@ -260,8 +261,8 @@ function ItemObject({ item }: { item: Item }) {
     }
   });
 
-  // Don't render if player is holding this item
-  if (playerHoldingItem?.id === item.id) {
+  // Don't render if player is holding this item or if an item is being placed
+  if (playerHoldingItem?.id === item.id || (gameState.isPlacingItem && playerHoldingItem?.id === item.id)) {
     return null;
   }
 
@@ -601,6 +602,11 @@ function Character() {
     setNextItemId
   } = useGameState();
   const characterRef = useRef<THREE.Group>();
+  
+  // Add a ref to track if we're currently placing an item
+  // This will help prevent race conditions between state updates
+  const isPlacingItem = useRef(false);
+  
   const materials = useLoader(
     MTLLoader,
     "/assets/Models/character-employee.mtl"
@@ -644,17 +650,24 @@ function Character() {
       // Try to place item on shelf
       const nearbyShelf = isNearShelf(position, playerHoldingItem.targetShelf);
       if (nearbyShelf) {
-        // Instead of updating the item, remove it from the items array
+        // Set the placing flag to true to prevent useFrame from updating the item
+        isPlacingItem.current = true;
+        gameState.isPlacingItem = true;
+        
+        // Store a reference to the current item before clearing it
+        const placedItem = { ...playerHoldingItem };
+        
+        // Clear held item and highlighted shelf FIRST to prevent race conditions
+        setPlayerHoldingItem(null);
+        gameState.highlightedShelf = null;
+        
+        // Then remove the item from the items array
         setItems(currentItems => 
-          currentItems.filter(item => item.id !== playerHoldingItem.id)
+          currentItems.filter(item => item.id !== placedItem.id)
         );
         
         // Show a brief visual effect at the shelf position
         createShelfPlacementEffect(nearbyShelf);
-        
-        // Clear held item and highlighted shelf
-        setPlayerHoldingItem(null);
-        gameState.highlightedShelf = null;
         
         // Update score
         setScore(s => s + 10);
@@ -677,6 +690,12 @@ function Character() {
         
         setItems(currentItems => [...currentItems, newItem]);
         setNextItemId(id => id + 1);
+        
+        // Reset the placing flags after a short delay to ensure all state updates have completed
+        setTimeout(() => {
+          isPlacingItem.current = false;
+          gameState.isPlacingItem = false;
+        }, 100);
       }
     } else {
       // Try to pick up an item
@@ -880,7 +899,8 @@ function Character() {
     characterRef.current.rotation.y = newRotation;
 
     // If holding an item, update its position to follow the character
-    if (playerHoldingItem) {
+    // Only update if we're not currently placing an item
+    if (playerHoldingItem && !isPlacingItem.current) {
       // Position the item in the character's hands
       const itemOffsetDistance = 0.4;
       const itemOffsetX = Math.sin(newRotation) * itemOffsetDistance;
@@ -912,8 +932,9 @@ function Character() {
   });
 
   // Render held item without text
-  const renderHeldItem = () => {
-    if (!playerHoldingItem) return null;
+  const renderHeldItem = useCallback(() => {
+    // Only render if we have a held item and we're not currently placing it
+    if (!playerHoldingItem || isPlacingItem.current) return null;
     
     const itemOffsetDistance = 0.4;
     const itemOffsetX = Math.sin(rotation) * itemOffsetDistance;
@@ -933,7 +954,7 @@ function Character() {
         </mesh>
       </group>
     );
-  };
+  }, [playerHoldingItem, position, rotation, isPlacingItem]);
 
   return (
     <>
@@ -1361,10 +1382,13 @@ function Thief() {
         break;
         
       case 'escaping':
-        // Check if we've reached the escape point (door)
+        // Escape through the door
+        const escapePoint = doorPosition;
+        
+        // Check if we've reached the escape point
         const escapeDistance = Math.sqrt(
-          Math.pow(position[0] - doorPosition[0], 2) + 
-          Math.pow(position[2] - doorPosition[2], 2)
+          Math.pow(position[0] - escapePoint[0], 2) + 
+          Math.pow(position[2] - escapePoint[2], 2)
         );
         
         if (escapeDistance < 0.5) {
@@ -1397,6 +1421,9 @@ function Thief() {
             }
             return prev - delta;
           });
+        } else {
+          // Set target to the door
+          setTargetPosition(doorPosition);
         }
         break;
     }
