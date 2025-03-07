@@ -1,0 +1,13 @@
+.speedometer {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  z-index: 1000;
+  user-select: none;
+} 

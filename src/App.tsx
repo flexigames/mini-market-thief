@@ -1,66 +1,112 @@
-import React, { useRef, useEffect } from 'react';
-import { Canvas, useLoader, useFrame } from '@react-three/fiber';
-import { OrbitControls, Grid, Environment } from '@react-three/drei';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
-import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader';
-import * as THREE from 'three';
+import React, {
+  useRef,
+  useEffect,
+  useState,
+} from "react";
+import { Canvas, useLoader, useFrame } from "@react-three/fiber";
+import {
+  OrbitControls,
+  Grid,
+  Environment,
+  PerspectiveCamera,
+} from "@react-three/drei";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
+import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader";
+import * as THREE from "three";
+import "./App.css";
 
-function Wall({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/wall.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/wall.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
+function Wall({
+  position,
+  rotation,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}) {
+  const materials = useLoader(MTLLoader, "/assets/Models/wall.mtl");
+  const obj = useLoader(
+    OBJLoader,
+    "/assets/Models/wall.obj",
+    (loader: OBJLoader) => {
+      materials.preload();
+      loader.setMaterials(materials);
+    }
+  );
 
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
+  return (
+    <primitive object={obj.clone()} position={position} rotation={rotation} />
+  );
 }
 
-function Window({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/wall-window.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/wall-window.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
+function Window({
+  position,
+  rotation,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}) {
+  const materials = useLoader(MTLLoader, "/assets/Models/wall-window.mtl");
+  const obj = useLoader(
+    OBJLoader,
+    "/assets/Models/wall-window.obj",
+    (loader: OBJLoader) => {
+      materials.preload();
+      loader.setMaterials(materials);
+    }
+  );
 
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
+  return (
+    <primitive object={obj.clone()} position={position} rotation={rotation} />
+  );
 }
 
-function Door({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/wall-door-rotate.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/wall-door-rotate.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
+function Door({
+  position,
+  rotation,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}) {
+  const materials = useLoader(MTLLoader, "/assets/Models/wall-door-rotate.mtl");
+  const obj = useLoader(
+    OBJLoader,
+    "/assets/Models/wall-door-rotate.obj",
+    (loader: OBJLoader) => {
+      materials.preload();
+      loader.setMaterials(materials);
+    }
+  );
 
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
+  return (
+    <primitive object={obj.clone()} position={position} rotation={rotation} />
+  );
 }
 
 function Floor() {
-  const materials = useLoader(MTLLoader, '/assets/Models/floor.mtl');
-  const originalObj = useLoader(OBJLoader, '/assets/Models/floor.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
+  const materials = useLoader(MTLLoader, "/assets/Models/floor.mtl");
+  const originalObj = useLoader(
+    OBJLoader,
+    "/assets/Models/floor.obj",
+    (loader: OBJLoader) => {
+      materials.preload();
+      loader.setMaterials(materials);
+    }
+  );
 
   const tiles = [];
   const size = 10;
   const spacing = 1;
-  
+
   // Calculate offset to center the grid
   const offset = (size * spacing) / 2 - spacing / 2;
-  
+
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
       const clonedObj = originalObj.clone();
       tiles.push(
-        <primitive 
-          key={`${x}-${z}`} 
-          object={clonedObj} 
-          position={[
-            x * spacing - offset,
-            0,
-            z * spacing - offset
-          ]}
+        <primitive
+          key={`${x}-${z}`}
+          object={clonedObj}
+          position={[x * spacing - offset, 0, z * spacing - offset]}
           scale={[1, 1, 1]}
         />
       );
@@ -84,7 +130,7 @@ function Walls() {
       wallsBack.push(
         <Window
           key={`back-window-${x}`}
-          position={[x - offset, 0, -offset - spacing/2]}
+          position={[x - offset, 0, -offset - spacing / 2]}
           rotation={[0, 0, 0]}
         />
       );
@@ -92,7 +138,7 @@ function Walls() {
       wallsBack.push(
         <Wall
           key={`back-${x}`}
-          position={[x - offset, 0, -offset - spacing/2]}
+          position={[x - offset, 0, -offset - spacing / 2]}
           rotation={[0, 0, 0]}
         />
       );
@@ -106,7 +152,7 @@ function Walls() {
       wallsLeft.push(
         <Door
           key={`left-door-${z}`}
-          position={[-offset - spacing/2, 0, z - offset]}
+          position={[-offset - spacing / 2, 0, z - offset]}
           rotation={[0, Math.PI / 2, 0]}
         />
       );
@@ -114,7 +160,7 @@ function Walls() {
       wallsLeft.push(
         <Wall
           key={`left-${z}`}
-          position={[-offset - spacing/2, 0, z - offset]}
+          position={[-offset - spacing / 2, 0, z - offset]}
           rotation={[0, Math.PI / 2, 0]}
         />
       );
@@ -129,14 +175,26 @@ function Walls() {
   );
 }
 
-function ShelfBoxes({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/shelf-boxes.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/shelf-boxes.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
+function ShelfBoxes({
+  position,
+  rotation,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}) {
+  const materials = useLoader(MTLLoader, "/assets/Models/shelf-boxes.mtl");
+  const obj = useLoader(
+    OBJLoader,
+    "/assets/Models/shelf-boxes.obj",
+    (loader: OBJLoader) => {
+      materials.preload();
+      loader.setMaterials(materials);
+    }
+  );
 
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
+  return (
+    <primitive object={obj.clone()} position={position} rotation={rotation} />
+  );
 }
 
 function Shelves() {
@@ -169,9 +227,15 @@ function checkCollisionWithShelves(x: number, z: number): boolean {
   // Define shelf positions for our aisle
   const shelfPositions = [
     // Left side of aisle
-    { x: -1.5, z: -3 }, { x: -1.5, z: -1 }, { x: -1.5, z: 1 }, { x: -1.5, z: 3 },
+    { x: -1.5, z: -3 },
+    { x: -1.5, z: -1 },
+    { x: -1.5, z: 1 },
+    { x: -1.5, z: 3 },
     // Right side of aisle
-    { x: 1.5, z: -3 }, { x: 1.5, z: -1 }, { x: 1.5, z: 1 }, { x: 1.5, z: 3 },
+    { x: 1.5, z: -3 },
+    { x: 1.5, z: -1 },
+    { x: 1.5, z: 1 },
+    { x: 1.5, z: 3 },
   ];
 
   // Check collision with each shelf
@@ -179,7 +243,7 @@ function checkCollisionWithShelves(x: number, z: number): boolean {
     const dx = x - shelf.x;
     const dz = z - shelf.z;
     const distance = Math.sqrt(dx * dx + dz * dz);
-    if (distance < (SHELF_SIZE.width / 2 + CHARACTER_SIZE.radius)) {
+    if (distance < SHELF_SIZE.width / 2 + CHARACTER_SIZE.radius) {
       return true;
     }
   }
@@ -192,48 +256,50 @@ function Lighting() {
     <>
       {/* Soft overall ambient light */}
       <ambientLight intensity={0.6} color="#ffffff" />
-      
+
       {/* Main directional light - soft warm tone */}
-      <directionalLight 
-        position={[5, 8, 5]} 
-        intensity={0.7} 
+      <directionalLight
+        position={[5, 8, 5]}
+        intensity={0.7}
         color="#fff6e6"
         castShadow
       />
-      
+
       {/* Fill light - subtle cool tone */}
-      <directionalLight 
-        position={[-5, 3, -5]} 
-        intensity={0.3} 
+      <directionalLight
+        position={[-5, 3, -5]}
+        intensity={0.3}
         color="#e6f0ff"
       />
-      
+
       {/* Top light for gentle highlights */}
-      <directionalLight 
-        position={[0, 10, 0]} 
-        intensity={0.2} 
-        color="#ffffff"
-      />
+      <directionalLight position={[0, 10, 0]} intensity={0.2} color="#ffffff" />
     </>
   );
 }
 
 function Character() {
   const characterRef = useRef<THREE.Group>();
-  const materials = useLoader(MTLLoader, '/assets/Models/character-employee.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/character-employee.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
+  const materials = useLoader(
+    MTLLoader,
+    "/assets/Models/character-employee.mtl"
+  );
+  const obj = useLoader(
+    OBJLoader,
+    "/assets/Models/character-employee.obj",
+    (loader: OBJLoader) => {
+      materials.preload();
+      loader.setMaterials(materials);
+    }
+  );
 
-  const baseSpeed = 0.1;
-  const diagonalSpeedMultiplier = 0.7071; // approximately 1/√2
+  const baseSpeed = 0.035;
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const position = useRef<[number, number, number]>([0, 0.15, 0]);
   const rotation = useRef<number>(0);
   const targetRotation = useRef<number>(0);
   const rotationSpeed = 0.15;
-  
+
   // Animation parameters
   const walkingTime = useRef<number>(0);
   const idleTime = useRef<number>(0);
@@ -246,18 +312,36 @@ function Character() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressed.current[e.key.toLowerCase()] = true;
+
+      // Prevent default browser scrolling for arrow keys
+      if (
+        ["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(
+          e.key.toLowerCase()
+        )
+      ) {
+        e.preventDefault();
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       keysPressed.current[e.key.toLowerCase()] = false;
+
+      // Prevent default browser scrolling for arrow keys
+      if (
+        ["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(
+          e.key.toLowerCase()
+        )
+      ) {
+        e.preventDefault();
+      }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
 
@@ -308,12 +392,9 @@ function Character() {
     idleTime.current += delta * idleFrequency;
 
     if (moving) {
-      // Calculate movement speed (faster for straight movement, normalized for diagonal)
-      const currentSpeed = baseSpeed * (isDiagonal ? diagonalSpeedMultiplier : 1);
-
       // Calculate new position
-      const newX = position.current[0] + Math.sin(moveAngle) * currentSpeed;
-      const newZ = position.current[2] + Math.cos(moveAngle) * currentSpeed;
+      const newX = position.current[0] + Math.sin(moveAngle) * baseSpeed;
+      const newZ = position.current[2] + Math.cos(moveAngle) * baseSpeed;
 
       // Only update position if there's no collision
       if (!checkCollisionWithShelves(newX, newZ)) {
@@ -331,18 +412,20 @@ function Character() {
         // Calculate the shortest rotation path
         let newTargetRotation = moveAngle;
         let rotationDiff = newTargetRotation - rotation.current;
-        
+
         // Normalize the rotation difference to [-π, π]
         while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
         while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
-        
+
         // Set the target rotation using the shortest path
         targetRotation.current = rotation.current + rotationDiff;
       }
     }
 
     // Apply animations
-    const walkingOffset = moving ? Math.sin(walkingTime.current) * walkingAmplitude : 0;
+    const walkingOffset = moving
+      ? Math.sin(walkingTime.current) * walkingAmplitude
+      : 0;
     const idleOffset = Math.sin(idleTime.current) * idleAmplitude;
     const finalY = baseHeight + Math.abs(walkingOffset) + Math.abs(idleOffset);
 
@@ -374,9 +457,9 @@ function Character() {
   });
 
   return (
-    <primitive 
-      ref={characterRef} 
-      object={obj.clone()} 
+    <primitive
+      ref={characterRef}
+      object={obj.clone()}
       position={[0, 0, 0]}
       scale={[0.8, 0.8, 0.8]}
     />
@@ -386,6 +469,7 @@ function Character() {
 function Scene() {
   return (
     <>
+      <ambientLight intensity={0.5} />
       <Lighting />
       <Floor />
       <Walls />
@@ -424,4 +508,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
