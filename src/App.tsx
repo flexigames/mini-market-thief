@@ -118,6 +118,8 @@ interface GameStateContextType {
   setNextItemId: React.Dispatch<React.SetStateAction<number>>;
   stolenItems: number;
   setStolenItems: React.Dispatch<React.SetStateAction<number>>;
+  showMessage: string | null;
+  setShowMessage: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 const GameStateContext = createContext<GameStateContextType | null>(null);
@@ -139,6 +141,8 @@ const gameState = {
   score: 0,
   characterPosition: null as [number, number, number] | null,
   highlightedShelf: null as { x: number; z: number } | null,
+  thiefTargetItem: null as number | null, // ID of the item the thief is targeting
+  shelfEffects: [] as { position: { x: number; z: number }, itemType: typeof ITEM_TYPES[number], createdAt: number }[],
 };
 
 // Function to check if character is near an item
@@ -221,6 +225,7 @@ function ItemObject({ item }: { item: Item }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const outlineRef = useRef<THREE.Mesh>(null);
   const [isNearPlayer, setIsNearPlayer] = useState(false);
+  const [isThiefTarget, setIsThiefTarget] = useState(false);
   const [pulseValue, setPulseValue] = useState(0);
   const [floatOffset, setFloatOffset] = useState(0);
   
@@ -249,6 +254,9 @@ function ItemObject({ item }: { item: Item }) {
         const isNear = isNearItem(characterPosition, item);
         setIsNearPlayer(isNear);
       }
+      
+      // Check if this item is the thief's target
+      setIsThiefTarget(gameState.thiefTargetItem === item.id);
     }
   });
 
@@ -303,15 +311,46 @@ function ItemObject({ item }: { item: Item }) {
         </>
       )}
       
-      {/* Actual item with gentle rotation */}
+      {/* Thief target indicator */}
+      {isThiefTarget && !item.onShelf && (
+        <mesh 
+          scale={item.type.scale.map(v => v * 1.3) as [number, number, number]}
+          rotation={floatRotation}
+        >
+          <boxGeometry args={[1, 1, 1]} />
+          <meshBasicMaterial 
+            color="#ff0000" 
+            transparent={true}
+            opacity={0.3 + pulseValue * 0.3}
+            side={THREE.BackSide}
+          />
+        </mesh>
+      )}
+      
+      {/* The actual item */}
       <mesh 
-        ref={meshRef} 
+        ref={meshRef}
         scale={item.type.scale}
         rotation={floatRotation}
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color={item.type.color} />
       </mesh>
+      
+      {/* Item label */}
+      {!item.onShelf && (
+        <Text
+          position={[0, item.type.scale[1] / 2 + 0.3, 0]}
+          fontSize={0.15}
+          color="#000000"
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.01}
+          outlineColor="#ffffff"
+        >
+          {item.type.name}
+        </Text>
+      )}
     </group>
   );
 }
@@ -620,14 +659,13 @@ function Character() {
       // Try to place item on shelf
       const nearbyShelf = isNearShelf(position, playerHoldingItem.targetShelf);
       if (nearbyShelf) {
-        // Update the item in the items array
+        // Instead of updating the item, remove it from the items array
         setItems(currentItems => 
-          currentItems.map(item => 
-            item.id === playerHoldingItem.id 
-              ? { ...item, position: [nearbyShelf.x, 0.3, nearbyShelf.z] as [number, number, number], onShelf: true } 
-              : item
-          )
+          currentItems.filter(item => item.id !== playerHoldingItem.id)
         );
+        
+        // Show a brief visual effect at the shelf position
+        createShelfPlacementEffect(nearbyShelf);
         
         // Clear held item and highlighted shelf
         setPlayerHoldingItem(null);
@@ -669,6 +707,37 @@ function Character() {
       }
     }
   }, [playerHoldingItem, position, items, setPlayerHoldingItem, setItems, setScore, nextItemId, setNextItemId]);
+
+  // Add a utility function for playing sounds
+  function playSound(url: string) {
+    const audio = new Audio(url);
+    audio.volume = 0.5;
+    audio.play().catch(error => {
+      console.error("Error playing sound:", error);
+    });
+  }
+
+  // Function to create a visual effect when an item is placed on a shelf
+  const createShelfPlacementEffect = (shelfPosition: { x: number; z: number }) => {
+    if (gameState.playerHoldingItem) {
+      // Add a new effect to the gameState
+      gameState.shelfEffects.push({
+        position: shelfPosition,
+        itemType: gameState.playerHoldingItem.type,
+        createdAt: Date.now()
+      });
+      
+      // Remove old effects after 2 seconds to prevent memory leaks
+      setTimeout(() => {
+        if (gameState.shelfEffects.length > 0) {
+          gameState.shelfEffects.shift();
+        }
+      }, 2000);
+      
+      // Play a success sound
+      playSound("/assets/sounds/success.mp3");
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -903,6 +972,7 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
   const [playerHoldingItem, setPlayerHoldingItem] = useState<Item | null>(null);
   const [nextItemId, setNextItemId] = useState(0);
   const [stolenItems, setStolenItems] = useState(0);
+  const [showMessage, setShowMessage] = useState<string | null>(null);
   
   // Initialize with 5 items
   useEffect(() => {
@@ -931,6 +1001,17 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items.length]);
   
+  // Auto-hide messages after a delay
+  useEffect(() => {
+    if (showMessage) {
+      const timer = setTimeout(() => {
+        setShowMessage(null);
+      }, 3000); // Hide message after 3 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showMessage]);
+  
   const value = {
     items,
     setItems,
@@ -941,7 +1022,9 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
     nextItemId,
     setNextItemId,
     stolenItems,
-    setStolenItems
+    setStolenItems,
+    showMessage,
+    setShowMessage
   };
   
   return (
@@ -951,14 +1034,68 @@ function GameStateProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Component to display a visual effect when an item is placed on a shelf
+function ShelfPlacementEffect({ position, itemType }: { position: { x: number; z: number }, itemType: typeof ITEM_TYPES[number] }) {
+  const [scale, setScale] = useState(0.1);
+  const [opacity, setOpacity] = useState(1.0);
+  
+  // Animation effect
+  useFrame(() => {
+    // Increase scale and decrease opacity over time
+    setScale(prev => Math.min(prev + 0.03, 1.5));
+    setOpacity(prev => Math.max(prev - 0.02, 0));
+  });
+  
+  return (
+    <group position={[position.x, 0.5, position.z]}>
+      {/* Success indicator */}
+      <mesh scale={[scale, scale, scale]}>
+        <sphereGeometry args={[0.5, 16, 16]} />
+        <meshBasicMaterial 
+          color="#00ff00" 
+          transparent={true}
+          opacity={opacity}
+        />
+      </mesh>
+      
+      {/* Item silhouette */}
+      <mesh scale={itemType.scale.map(v => v * scale) as [number, number, number]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial 
+          color={itemType.color} 
+          transparent={true}
+          opacity={opacity * 0.7}
+        />
+      </mesh>
+      
+      {/* Text label */}
+      <group visible={opacity > 0.1}>
+        <Text
+          position={[0, 0.5 * scale, 0]}
+          fontSize={0.2 * scale}
+          color="#ffffff"
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.02}
+          outlineColor="#00aa00"
+        >
+          +10
+        </Text>
+      </group>
+    </group>
+  );
+}
+
 // Simplified GameManager - just renders items and score
 function GameManager() {
   const { items, score } = useGameState();
   const [highlightedShelf, setHighlightedShelf] = useState<{ x: number; z: number } | null>(null);
+  const [shelfEffects, setShelfEffects] = useState<{ position: { x: number; z: number }, itemType: typeof ITEM_TYPES[number], createdAt: number }[]>([]);
   
-  // Update the highlighted shelf from gameState
+  // Update the highlighted shelf and shelf effects from gameState
   useFrame(() => {
     setHighlightedShelf(gameState.highlightedShelf);
+    setShelfEffects([...gameState.shelfEffects]);
   });
   
   return (
@@ -972,6 +1109,15 @@ function GameManager() {
       {highlightedShelf && (
         <TargetShelf position={highlightedShelf} />
       )}
+      
+      {/* Render shelf placement effects */}
+      {shelfEffects.map((effect, index) => (
+        <ShelfPlacementEffect 
+          key={`effect-${effect.createdAt}-${index}`}
+          position={effect.position}
+          itemType={effect.itemType}
+        />
+      ))}
     </group>
   );
 }
@@ -1008,44 +1154,60 @@ function Thief() {
     items, 
     setItems,
     stolenItems,
-    setStolenItems
+    setStolenItems,
+    setShowMessage,
+    playerHoldingItem
   } = useGameState();
   
   const thiefRef = useRef<THREE.Group>();
   const materials = useLoader(
     MTLLoader,
-    "/assets/CharacterModels/character-male-c.mtl"
+    "/assets/CharacterModels/character-male-f.mtl"
   );
   const obj = useLoader(
     OBJLoader,
-    "/assets/CharacterModels/character-male-c.obj",
+    "/assets/CharacterModels/character-male-f.obj",
     (loader: OBJLoader) => {
       materials.preload();
       loader.setMaterials(materials);
     }
   );
 
+  // Calculate door position based on the Walls component
+  const size = 10;
+  const spacing = 1;
+  const offset = (size * spacing) / 2 - spacing / 2;
+  const doorPosition: [number, number, number] = [-offset - spacing, 0.15, 3 - offset]; // Door is at z=3
+  
   // Thief state
-  const [position, setPosition] = useState<[number, number, number]>([-4.5, 0.15, -4.5]); // Start outside the store
-  const [rotation, setRotation] = useState<number>(Math.PI / 4); // Initial rotation
-  const [targetPosition, setTargetPosition] = useState<[number, number, number]>([-4.5, 0.15, -4.5]);
-  const [thiefState, setThiefState] = useState<'entering' | 'searching' | 'stealing' | 'escaping' | 'waiting'>('waiting');
+  const [position, setPosition] = useState<[number, number, number]>(doorPosition); // Start at the door position
+  const [rotation, setRotation] = useState<number>(Math.PI / 2); // Face inward
+  const [targetPosition, setTargetPosition] = useState<[number, number, number]>(doorPosition);
+  const [thiefState, setThiefState] = useState<'entering' | 'searching' | 'stealing' | 'escaping' | 'waiting' | 'fleeing'>('waiting');
   const [targetItem, setTargetItem] = useState<Item | null>(null);
   const [thiefHoldingItem, setThiefHoldingItem] = useState<Item | null>(null);
   const [walkingTime, setWalkingTime] = useState<number>(0);
   const [waitTimer, setWaitTimer] = useState<number>(10); // Wait 10 seconds before entering
+  const [fleeingCooldown, setFleeingCooldown] = useState<number>(0); // Cooldown after being caught
   
   // Constants
   const thiefSpeed = 0.05; // Faster than player
+  const fleeingSpeed = 0.07; // Even faster when fleeing
   const baseHeight = 0.15;
   const walkingAmplitude = 0.08;
   const walkingFrequency = 12; // Faster animation
+  const playerCollisionRadius = 0.7; // How close the player needs to be to catch the thief
   
   // Initialize thief behavior
   useEffect(() => {
     // Start the thief in waiting state
     setThiefState('waiting');
   }, []);
+  
+  // Update the global state with the thief's target item
+  useEffect(() => {
+    gameState.thiefTargetItem = targetItem?.id || null;
+  }, [targetItem]);
   
   // Main thief behavior loop
   useFrame((_, delta) => {
@@ -1067,6 +1229,51 @@ function Thief() {
     const tiltAmount = Math.sin(walkingTime) * 0.1;
     thiefRef.current.rotation.z = tiltAmount;
     
+    // Check if target item has been picked up by player
+    if (targetItem && playerHoldingItem && playerHoldingItem.id === targetItem.id && thiefState === 'searching') {
+      // Player picked up our target item, find a new one
+      setTargetItem(null);
+    }
+    
+    // Check for collision with player
+    const characterPosition = gameState.characterPosition;
+    if (characterPosition && thiefState !== 'waiting' && thiefState !== 'fleeing') {
+      const dx = position[0] - characterPosition[0];
+      const dz = position[2] - characterPosition[2];
+      const distanceToPlayer = Math.sqrt(dx * dx + dz * dz);
+      
+      // If player catches the thief
+      if (distanceToPlayer < playerCollisionRadius) {
+        // If thief is holding an item, drop it
+        if (thiefHoldingItem) {
+          // Add the item back to the game at the thief's current position
+          const droppedItem = {
+            ...thiefHoldingItem,
+            position: [...position] as [number, number, number]
+          };
+          
+          setItems(currentItems => [...currentItems, droppedItem]);
+          setThiefHoldingItem(null);
+          
+          // Decrement stolen items count
+          setStolenItems(prev => Math.max(0, prev - 1));
+          
+          // Show message
+          setShowMessage("You caught the thief! Item recovered!");
+        } else {
+          // Show message even if thief wasn't holding an item
+          setShowMessage("You scared away the thief!");
+        }
+        
+        // Set thief to fleeing state
+        setThiefState('fleeing');
+        
+        // Run away to the door
+        setTargetPosition(doorPosition);
+        setFleeingCooldown(5); // Set cooldown before thief returns
+      }
+    }
+    
     // State machine for thief behavior
     switch (thiefState) {
       case 'waiting':
@@ -1074,6 +1281,8 @@ function Thief() {
         setWaitTimer(prev => {
           if (prev <= 0) {
             setThiefState('entering');
+            // Reset position to behind the door
+            setPosition(doorPosition);
             return 10; // Reset timer for next time
           }
           return prev - delta;
@@ -1081,17 +1290,36 @@ function Thief() {
         break;
         
       case 'entering':
-        // Move to a random position in the store
-        const randomX = (Math.random() * 3) - 1.5;
-        const randomZ = (Math.random() * 3) - 1.5;
-        setTargetPosition([randomX, baseHeight, randomZ]);
-        setThiefState('searching');
+        // First move into the store through the door
+        const storeEntryPoint: [number, number, number] = [-offset, baseHeight, 3 - offset]; // Just inside the door
+        
+        // Check if we've reached the entry point
+        const distanceToEntry = Math.sqrt(
+          Math.pow(position[0] - storeEntryPoint[0], 2) + 
+          Math.pow(position[2] - storeEntryPoint[2], 2)
+        );
+        
+        if (distanceToEntry < 0.1) {
+          // Now move to a random position in the store
+          const randomX = (Math.random() * 3) - 1.5;
+          const randomZ = (Math.random() * 3) - 1.5;
+          setTargetPosition([randomX, baseHeight, randomZ]);
+          setThiefState('searching');
+        } else {
+          // Keep moving toward the entry point
+          setTargetPosition(storeEntryPoint);
+        }
         break;
         
       case 'searching':
         // Find the nearest item to steal
         if (!targetItem) {
-          const availableItems = items.filter(item => !item.onShelf);
+          // Only consider items that are not on shelves and not being held by the player
+          const availableItems = items.filter(item => 
+            !item.onShelf && 
+            (!playerHoldingItem || item.id !== playerHoldingItem.id)
+          );
+          
           if (availableItems.length > 0) {
             // Find closest item
             let closestItem = availableItems[0];
@@ -1113,9 +1341,16 @@ function Thief() {
           } else {
             // No items to steal, escape
             setThiefState('escaping');
-            setTargetPosition([-4.5, baseHeight, -4.5]);
+            setTargetPosition(doorPosition);
           }
         } else {
+          // Check if the target item is still valid (not picked up by player)
+          if (playerHoldingItem && playerHoldingItem.id === targetItem.id) {
+            // Player picked up our target item, find a new one
+            setTargetItem(null);
+            break;
+          }
+          
           // Check if we've reached the target item
           const dx = position[0] - targetItem.position[0];
           const dz = position[2] - targetItem.position[2];
@@ -1135,16 +1370,16 @@ function Thief() {
             
             // Escape with the item
             setThiefState('escaping');
-            setTargetPosition([-4.5, baseHeight, -4.5]);
+            setTargetPosition(doorPosition);
           }
         }
         break;
         
       case 'escaping':
-        // Check if we've reached the escape point
+        // Check if we've reached the escape point (door)
         const escapeDistance = Math.sqrt(
-          Math.pow(position[0] - (-4.5), 2) + 
-          Math.pow(position[2] - (-4.5), 2)
+          Math.pow(position[0] - doorPosition[0], 2) + 
+          Math.pow(position[2] - doorPosition[2], 2)
         );
         
         if (escapeDistance < 0.5) {
@@ -1152,7 +1387,31 @@ function Thief() {
           setThiefState('waiting');
           setTargetItem(null);
           setThiefHoldingItem(null);
-          setPosition([-4.5, baseHeight, -4.5]);
+          setPosition(doorPosition);
+        }
+        break;
+        
+      case 'fleeing':
+        // Check if we've reached the flee point (door)
+        const fleeDistance = Math.sqrt(
+          Math.pow(position[0] - doorPosition[0], 2) + 
+          Math.pow(position[2] - doorPosition[2], 2)
+        );
+        
+        const isOutsideStore = Math.abs(position[0]) > 4.5 || Math.abs(position[2]) > 4.5;
+        
+        if (fleeDistance < 0.5 || isOutsideStore) {
+          // Update fleeing cooldown
+          setFleeingCooldown(prev => {
+            if (prev <= 0) {
+              // Reset thief state after cooldown
+              setThiefState('waiting');
+              setTargetItem(null);
+              setPosition(doorPosition);
+              return 0;
+            }
+            return prev - delta;
+          });
         }
         break;
     }
@@ -1170,16 +1429,18 @@ function Thief() {
         const normalizedDirX = dirX / length;
         const normalizedDirZ = dirZ / length;
         
-        // Calculate new position
-        const newX = position[0] + normalizedDirX * thiefSpeed;
-        const newZ = position[2] + normalizedDirZ * thiefSpeed;
+        // Use faster speed when fleeing
+        const currentSpeed = thiefState === 'fleeing' ? fleeingSpeed : thiefSpeed;
         
-        // Update position with boundary checks
-        const bounds = 4.5;
+        // Calculate new position
+        const newX = position[0] + normalizedDirX * currentSpeed;
+        const newZ = position[2] + normalizedDirZ * currentSpeed;
+        
+        // Update position - no collision check for the thief
         setPosition([
-          Math.max(-bounds, Math.min(bounds, newX)),
+          newX,
           baseHeight,
-          Math.max(-bounds, Math.min(bounds, newZ))
+          newZ
         ]);
         
         // Update rotation to face movement direction
@@ -1277,6 +1538,7 @@ function App() {
         }}>
           <ScoreDisplay />
         </div>
+        <MessageDisplay />
       </GameStateProvider>
     </div>
   );
@@ -1294,6 +1556,19 @@ function ScoreDisplay() {
       <div>
         <span style={{ fontWeight: 'bold', color: '#ff5555' }}>Items Stolen:</span> {stolenItems}
       </div>
+    </div>
+  );
+}
+
+// Component to display messages
+function MessageDisplay() {
+  const { showMessage } = useGameState();
+  
+  if (!showMessage) return null;
+  
+  return (
+    <div className="message-display">
+      {showMessage}
     </div>
   );
 }
