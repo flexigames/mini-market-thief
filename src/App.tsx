@@ -336,21 +336,6 @@ function ItemObject({ item }: { item: Item }) {
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color={item.type.color} />
       </mesh>
-      
-      {/* Item label */}
-      {!item.onShelf && (
-        <Text
-          position={[0, item.type.scale[1] / 2 + 0.3, 0]}
-          fontSize={0.15}
-          color="#000000"
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.01}
-          outlineColor="#ffffff"
-        >
-          {item.type.name}
-        </Text>
-      )}
     </group>
   );
 }
