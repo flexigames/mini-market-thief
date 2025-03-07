@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Canvas, useLoader } from '@react-three/fiber';
+import React, { useRef, useEffect } from 'react';
+import { Canvas, useLoader, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment } from '@react-three/drei';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader';
@@ -129,6 +129,64 @@ function Walls() {
   );
 }
 
+function ShelfBoxes({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
+  const materials = useLoader(MTLLoader, '/assets/Models/shelf-boxes.mtl');
+  const obj = useLoader(OBJLoader, '/assets/Models/shelf-boxes.obj', (loader: OBJLoader) => {
+    materials.preload();
+    loader.setMaterials(materials);
+  });
+
+  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
+}
+
+function Shelves() {
+  return (
+    <group position={[0, 0, 0]}>
+      {/* Left side of aisle */}
+      <group position={[-1.5, 0, 0]}>
+        <ShelfBoxes position={[0, 0, -3]} rotation={[0, Math.PI / 2, 0]} />
+        <ShelfBoxes position={[0, 0, -1]} rotation={[0, Math.PI / 2, 0]} />
+        <ShelfBoxes position={[0, 0, 1]} rotation={[0, Math.PI / 2, 0]} />
+        <ShelfBoxes position={[0, 0, 3]} rotation={[0, Math.PI / 2, 0]} />
+      </group>
+
+      {/* Right side of aisle */}
+      <group position={[1.5, 0, 0]}>
+        <ShelfBoxes position={[0, 0, -3]} rotation={[0, -Math.PI / 2, 0]} />
+        <ShelfBoxes position={[0, 0, -1]} rotation={[0, -Math.PI / 2, 0]} />
+        <ShelfBoxes position={[0, 0, 1]} rotation={[0, -Math.PI / 2, 0]} />
+        <ShelfBoxes position={[0, 0, 3]} rotation={[0, -Math.PI / 2, 0]} />
+      </group>
+    </group>
+  );
+}
+
+// Collision detection constants
+const SHELF_SIZE = { width: 0.7, depth: 0.7 };
+const CHARACTER_SIZE = { radius: 0.2 };
+
+function checkCollisionWithShelves(x: number, z: number): boolean {
+  // Define shelf positions for our aisle
+  const shelfPositions = [
+    // Left side of aisle
+    { x: -1.5, z: -3 }, { x: -1.5, z: -1 }, { x: -1.5, z: 1 }, { x: -1.5, z: 3 },
+    // Right side of aisle
+    { x: 1.5, z: -3 }, { x: 1.5, z: -1 }, { x: 1.5, z: 1 }, { x: 1.5, z: 3 },
+  ];
+
+  // Check collision with each shelf
+  for (const shelf of shelfPositions) {
+    const dx = x - shelf.x;
+    const dz = z - shelf.z;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+    if (distance < (SHELF_SIZE.width / 2 + CHARACTER_SIZE.radius)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function Lighting() {
   return (
     <>
@@ -160,121 +218,168 @@ function Lighting() {
   );
 }
 
-function ShelfBoxes({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/shelf-boxes.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/shelf-boxes.obj', (loader: OBJLoader) => {
+function Character() {
+  const characterRef = useRef<THREE.Group>();
+  const materials = useLoader(MTLLoader, '/assets/Models/character-employee.mtl');
+  const obj = useLoader(OBJLoader, '/assets/Models/character-employee.obj', (loader: OBJLoader) => {
     materials.preload();
     loader.setMaterials(materials);
   });
 
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
-}
+  const baseSpeed = 0.1;
+  const diagonalSpeedMultiplier = 0.7071; // approximately 1/√2
+  const keysPressed = useRef<{ [key: string]: boolean }>({});
+  const position = useRef<[number, number, number]>([0, 0.15, 0]);
+  const rotation = useRef<number>(0);
+  const targetRotation = useRef<number>(0);
+  const rotationSpeed = 0.15;
+  
+  // Animation parameters
+  const walkingTime = useRef<number>(0);
+  const idleTime = useRef<number>(0);
+  const walkingAmplitude = 0.08;
+  const walkingFrequency = 10;
+  const idleAmplitude = 0.02;
+  const idleFrequency = 2;
+  const baseHeight = 0.15;
 
-function ShelfBags({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/shelf-bags.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/shelf-bags.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysPressed.current[e.key.toLowerCase()] = true;
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysPressed.current[e.key.toLowerCase()] = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  useFrame(({ camera }, delta) => {
+    if (!characterRef.current) return;
+
+    const moveForward = keysPressed.current['w'] || keysPressed.current['arrowup'];
+    const moveBackward = keysPressed.current['s'] || keysPressed.current['arrowdown'];
+    const moveLeft = keysPressed.current['a'] || keysPressed.current['arrowleft'];
+    const moveRight = keysPressed.current['d'] || keysPressed.current['arrowright'];
+
+    // Get camera's horizontal rotation
+    const cameraAngle = Math.atan2(camera.position.x, camera.position.z);
+
+    // Calculate movement direction relative to camera
+    let moveAngle = 0;
+    let moving = false;
+    let isDiagonal = false;
+
+    if (moveForward || moveBackward || moveLeft || moveRight) {
+      moving = true;
+      
+      // Base movement angles (relative to camera)
+      if (moveForward) moveAngle = 0;
+      if (moveBackward) moveAngle = Math.PI;
+      if (moveLeft) moveAngle = Math.PI / 2;
+      if (moveRight) moveAngle = -Math.PI / 2;
+
+      // Diagonal movement
+      if ((moveForward || moveBackward) && (moveLeft || moveRight)) {
+        isDiagonal = true;
+        if (moveForward && moveLeft) moveAngle = Math.PI / 4;
+        if (moveForward && moveRight) moveAngle = -Math.PI / 4;
+        if (moveBackward && moveLeft) moveAngle = Math.PI * 3/4;
+        if (moveBackward && moveRight) moveAngle = -Math.PI * 3/4;
+      }
+
+      // Adjust movement angle based on camera rotation
+      moveAngle = (moveAngle + cameraAngle + Math.PI) % (Math.PI * 2);
+    }
+
+    // Update animation timers
+    if (moving) {
+      walkingTime.current += delta * walkingFrequency;
+    } else {
+      walkingTime.current = 0;
+    }
+    idleTime.current += delta * idleFrequency;
+
+    if (moving) {
+      // Calculate movement speed (faster for straight movement, normalized for diagonal)
+      const currentSpeed = baseSpeed * (isDiagonal ? diagonalSpeedMultiplier : 1);
+
+      // Calculate new position
+      const newX = position.current[0] + Math.sin(moveAngle) * currentSpeed;
+      const newZ = position.current[2] + Math.cos(moveAngle) * currentSpeed;
+
+      // Only update position if there's no collision
+      if (!checkCollisionWithShelves(newX, newZ)) {
+        // Update position with boundary checks
+        const bounds = 4.5;
+        position.current = [
+          Math.max(-bounds, Math.min(bounds, newX)),
+          baseHeight,
+          Math.max(-bounds, Math.min(bounds, newZ))
+        ];
+      }
+
+      // Update target rotation to face movement direction
+      if (moving) {
+        // Calculate the shortest rotation path
+        let newTargetRotation = moveAngle;
+        let rotationDiff = newTargetRotation - rotation.current;
+        
+        // Normalize the rotation difference to [-π, π]
+        while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+        while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+        
+        // Set the target rotation using the shortest path
+        targetRotation.current = rotation.current + rotationDiff;
+      }
+    }
+
+    // Apply animations
+    const walkingOffset = moving ? Math.sin(walkingTime.current) * walkingAmplitude : 0;
+    const idleOffset = Math.sin(idleTime.current) * idleAmplitude;
+    const finalY = baseHeight + Math.abs(walkingOffset) + Math.abs(idleOffset);
+
+    // Set position with animations
+    characterRef.current.position.set(
+      position.current[0],
+      finalY,
+      position.current[2]
+    );
+
+    // Add slight tilt when walking
+    if (moving) {
+      characterRef.current.rotation.z = Math.sin(walkingTime.current) * 0.1;
+    } else {
+      characterRef.current.rotation.z = 0;
+    }
+
+    // Smooth rotation for turning
+    const currentRotation = rotation.current;
+    let rotationDiff = targetRotation.current - currentRotation;
+
+    // Normalize the rotation difference to the shortest path
+    if (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+    if (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+
+    // Apply smooth rotation
+    rotation.current += rotationDiff * rotationSpeed;
+    characterRef.current.rotation.y = rotation.current;
   });
 
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
-}
-
-function ShelfEnd({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/shelf-end.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/shelf-end.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
-
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
-}
-
-function DisplayFruit({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] }) {
-  const materials = useLoader(MTLLoader, '/assets/Models/display-fruit.mtl');
-  const obj = useLoader(OBJLoader, '/assets/Models/display-fruit.obj', (loader: OBJLoader) => {
-    materials.preload();
-    loader.setMaterials(materials);
-  });
-
-  return <primitive object={obj.clone()} position={position} rotation={rotation} />;
-}
-
-function Shelves() {
-  // Create organized aisles
   return (
-    <group position={[0, 0, 0]}>
-      {/* Aisle 1 */}
-      <group position={[-3, 0, 0]}>
-        {/* Left side of aisle */}
-        <group position={[0, 0, 0]}>
-          <ShelfBoxes position={[0, 0, -3]} rotation={[0, 0, 0]} />
-          <ShelfBoxes position={[0, 0, -1]} rotation={[0, 0, 0]} />
-          <ShelfBoxes position={[0, 0, 1]} rotation={[0, 0, 0]} />
-          <ShelfBoxes position={[0, 0, 3]} rotation={[0, 0, 0]} />
-        </group>
-        {/* Right side of aisle */}
-        <group position={[1, 0, 0]}>
-          <ShelfBoxes position={[0, 0, -3]} rotation={[0, Math.PI, 0]} />
-          <ShelfBoxes position={[0, 0, -1]} rotation={[0, Math.PI, 0]} />
-          <ShelfBoxes position={[0, 0, 1]} rotation={[0, Math.PI, 0]} />
-          <ShelfBoxes position={[0, 0, 3]} rotation={[0, Math.PI, 0]} />
-        </group>
-        {/* End caps */}
-        <ShelfEnd position={[0.5, 0, -4]} rotation={[0, Math.PI/2, 0]} />
-        <ShelfEnd position={[0.5, 0, 4]} rotation={[0, -Math.PI/2, 0]} />
-      </group>
-
-      {/* Aisle 2 */}
-      <group position={[0, 0, 0]}>
-        {/* Left side of aisle */}
-        <group position={[0, 0, 0]}>
-          <ShelfBags position={[0, 0, -3]} rotation={[0, 0, 0]} />
-          <ShelfBags position={[0, 0, -1]} rotation={[0, 0, 0]} />
-          <ShelfBags position={[0, 0, 1]} rotation={[0, 0, 0]} />
-          <ShelfBags position={[0, 0, 3]} rotation={[0, 0, 0]} />
-        </group>
-        {/* Right side of aisle */}
-        <group position={[1, 0, 0]}>
-          <ShelfBags position={[0, 0, -3]} rotation={[0, Math.PI, 0]} />
-          <ShelfBags position={[0, 0, -1]} rotation={[0, Math.PI, 0]} />
-          <ShelfBags position={[0, 0, 1]} rotation={[0, Math.PI, 0]} />
-          <ShelfBags position={[0, 0, 3]} rotation={[0, Math.PI, 0]} />
-        </group>
-        {/* End caps */}
-        <ShelfEnd position={[0.5, 0, -4]} rotation={[0, Math.PI/2, 0]} />
-        <ShelfEnd position={[0.5, 0, 4]} rotation={[0, -Math.PI/2, 0]} />
-      </group>
-
-      {/* Aisle 3 */}
-      <group position={[3, 0, 0]}>
-        {/* Left side of aisle */}
-        <group position={[0, 0, 0]}>
-          <ShelfBoxes position={[0, 0, -3]} rotation={[0, 0, 0]} />
-          <ShelfBoxes position={[0, 0, -1]} rotation={[0, 0, 0]} />
-          <ShelfBoxes position={[0, 0, 1]} rotation={[0, 0, 0]} />
-          <ShelfBoxes position={[0, 0, 3]} rotation={[0, 0, 0]} />
-        </group>
-        {/* Right side of aisle */}
-        <group position={[1, 0, 0]}>
-          <ShelfBoxes position={[0, 0, -3]} rotation={[0, Math.PI, 0]} />
-          <ShelfBoxes position={[0, 0, -1]} rotation={[0, Math.PI, 0]} />
-          <ShelfBoxes position={[0, 0, 1]} rotation={[0, Math.PI, 0]} />
-          <ShelfBoxes position={[0, 0, 3]} rotation={[0, Math.PI, 0]} />
-        </group>
-        {/* End caps */}
-        <ShelfEnd position={[0.5, 0, -4]} rotation={[0, Math.PI/2, 0]} />
-        <ShelfEnd position={[0.5, 0, 4]} rotation={[0, -Math.PI/2, 0]} />
-      </group>
-
-      {/* Produce section along the wall */}
-      <group position={[-4.5, 0, 0]}>
-        <DisplayFruit position={[0, 0, -3]} rotation={[0, -Math.PI/2, 0]} />
-        <DisplayFruit position={[0, 0, -1]} rotation={[0, -Math.PI/2, 0]} />
-        <DisplayFruit position={[0, 0, 1]} rotation={[0, -Math.PI/2, 0]} />
-        <DisplayFruit position={[0, 0, 3]} rotation={[0, -Math.PI/2, 0]} />
-      </group>
-    </group>
+    <primitive 
+      ref={characterRef} 
+      object={obj.clone()} 
+      position={[0, 0, 0]}
+      scale={[0.8, 0.8, 0.8]}
+    />
   );
 }
 
@@ -285,6 +390,7 @@ function Scene() {
       <Floor />
       <Walls />
       <Shelves />
+      <Character />
       <Grid
         args={[10, 10]}
         position={[0, 0.01, 0]}
